@@ -160,10 +160,10 @@ def chrootImage(path, pw):
 #zipImage('/home/hyatt/.paradrop/routers/vanilla-snappy.img')
 #unzipImage('/home/hyatt/.paradrop/routers/vanilla-snappy.img.gz', '/home/hyatt/.paradrop/routers/snappy.img')
 mountImage('pd.nick.test', 5)
-with open('/home/hyatt/keys/ca', 'rb') as f:
-    ca = f.read()
-with open('/home/hyatt/keys/pub', 'rb') as f:
-    pub = f.read()
+#with open('/home/hyatt/keys/ca', 'rb') as f:
+#    ca = f.read()
+#with open('/home/hyatt/keys/pub', 'rb') as f:
+#    pub = f.read()
 #placeKeys(ca, pub, '/home/hyatt/tmp-router-storage/pd.nick.test')
 #unmountImage('pd.nick.test')
 
