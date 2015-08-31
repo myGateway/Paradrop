@@ -26,7 +26,7 @@ from docopt import docopt
 from twisted.internet import task
 from twisted.internet import reactor
 
-from pdtools.lib import output, riffle, names, cxbr
+from pdtools.lib import output, riffle, names, cxbr, nexus
 from pdtools.coms import routers, general, server
 from pdtools.lib.store import store
 
@@ -41,7 +41,7 @@ usage: paradrop [options] <command> [<args>...]
 options:
    -h, --help
    --version
-   -v, --verbose    Show verbose internal output       
+   -v, --verbose      Show verbose internal output 
    
 commands:
     router     Manage routers
@@ -111,8 +111,6 @@ must be online.
 def routerMenu():
     args = docopt(routerDoc, options_first=False)
 
-    checkLoggedIn()
-
     if args['provision']:
         task.react(routers.provisionRouter, (args['<name>'], args['<host>'], args['<port>']))
 
@@ -125,8 +123,6 @@ def routerMenu():
 
 def chuteMenu():
     args = docopt(chuteDoc, options_first=False)
-
-    checkLoggedIn()
 
     if args['install']:
         return routers.installChute(args['<host>'], args['<port>'], args['<path-to-config>'])
@@ -145,14 +141,12 @@ def chuteMenu():
 
 def listMenu():
     args = docopt(listDoc)
-    checkLoggedIn()
 
     task.react(server.list)
 
 
 def logsMenu():
     args = docopt(logsDoc)
-    checkLoggedIn()
 
     reactor.callLater(.1, server.logs, None, args['<name>'])
     reactor.run()
@@ -163,11 +157,14 @@ def logsMenu():
 # Utility and Initialization
 ###################################################################
 
-def checkLoggedIn():
-    # logged in calls
-    if not store.loggedIn():
-        print 'You must login first.'
-        exit(0)
+class Nexus(nexus.NexusBase):
+
+    def __init__(self, mode, settings=[]):
+        # get a Mode.production, Mode.test, etc from the passed string
+        mode = eval('nexus.Mode.%s' % mode)
+
+        # Want to change logging functionality? See optional args on the base class and pass them here
+        super(Nexus, self).__init__(nexus.Type.tools, mode, settings=settings, stealStdio=False, printToConsole=False)
 
 
 def setup(displayToConsole=False, logLevel=0):
@@ -178,22 +175,16 @@ def setup(displayToConsole=False, logLevel=0):
     # For now, don't grab STDIO and don't write random log noise to conosle
     output.out.startLogging(stealStdio=False, printToConsole=False)
 
-    # Initialize riffle with default values (can be overridden later)
-    # NOTE: riffle serves on its own default port. This is a different port from the const above
-    # riffle.portal.certCa = store.getKey('ca.pem')
-    # riffle.portal.keyPrivate = store.getKey('client.pem')
-    # riffle.portal.host = SERVER_HOST
-
-    # Register realms. See riffle documentation for Realm in pdtools.lib.riffle
-    # riffle.portal.addRealm(names.matchers[names.NameTypes.server], riffle.Realm(server.ServerPerspective))
-    # riffle.portal.addRealm(names.matchers[names.NameTypes.router], riffle.Realm(riffle.RifflePerspective))
-
 
 def main():
     # present documentation, extract arguments
     args = docopt(rootDoc, version=get_distribution('pdtools').version, options_first=True, help=True)
     argv = [args['<command>']] + args['<args>']
     command = args['<command>']
+
+    print 'Args in dev mode: ' + str(args)
+    print 'Sub args: ' + str(args['<args>'])
+    exit(0)
 
     # Check for verbose flag. If set, turn on the serious logging.
     # TODO: set lower level log filters based on the number of '-v's passed in
@@ -203,12 +194,19 @@ def main():
         task.react(server.login, (SERVER_HOST, SERVER_PORT,))
 
     if command == 'register':
-        task.react(server.register, (SERVER_HOST, SERVER_PORT,))
+        task.react(server.register, (SERVER_HOST, SERVER_PORT))
+
+    # Make sure the user is logged in. If not, return. All following calls reuqire
+    # logged in
+    if not store.loggedIn():
+        print 'You must login first.'
+        exit(0)
 
     # It doesn't matter what the call is. If we got to this point then we have to instantiate a
     # crossbar session
     # pdid = store.getConfig('pdid')
     # sess = yield cxbr.BaseSession.start("ws://127.0.0.1:8080/ws", pdid)
+    nexus.core = nexus.nexusBase()
 
     # Check for a sub-command. If found, pass off execution to the appropriate sub-handler
     if command in 'router chute list logs'.split():

@@ -34,7 +34,7 @@ from enum import Enum
 import smokesignal
 from twisted.internet import reactor
 
-from pdtools.lib import store, riffle, output
+from pdtools.lib import store, riffle, output, cxbr
 
 # Global access. Assign this wherever you instantiate the Nexus object:
 #       nexus.core = MyNexusSubclass()
@@ -165,10 +165,23 @@ class NexusBase(object):
     # One of the enum values above this class
     PDID = None                                         # nexus.core.info.pdid
 
-    def __init__(self, nexusType, mode=Mode.development, settings=[], stealStdio=True, printToConsole=True):
+    def __init__(self, nexusType, mode=Mode.development, session=cxbr.BaseSession,
+                 settings=[], stealStdio=True, printToConsole=True):
         '''
+        Initialize core stateful object with type, mode, and basic settings.
+
+        This class will always attempt to connect to the crossbar fabric. 
+        If no session class type is passed in, base session type is used. 
+        Connection automatically retries on loss or lack of connection. 
+
         The one big thing this function leaves out is reactor.start(). Call this externally 
         *after* initializing a nexus object. 
+
+        :param nexusType: the type of the owner of this nexus
+        :type nexusType: one of Type.[router, tools, server]
+        :param mode: what mode to run in
+        :type mode: one of Mode.[production, development, testing, local]
+        :param session: 
         '''
 
         # Create the attr redirectors. These allow for nexus.net.stuff
@@ -199,12 +212,14 @@ class NexusBase(object):
         [x._lock() for x in [self.path, self.net, self.meta]]
         self.info.setOnChange(self.onInfoChange)
 
-        # Done with data initizlization. From here on out its configuration and state
-
         # initialize output. If filepath is set, logs to file.
         # If stealStdio is set intercepts all stderr and stdout and interprets it internally
         # If printToConsole is set (defaults True) all final output is rendered to stdout
         output.out.startLogging(filePath=self.path.log, stealStdio=stealStdio, printToConsole=printToConsole)
+
+        # the root session object. Automatically connects to the crossbar
+        # fabric. Reconnects as needed.
+        self.session = None
 
         # register onStop for the shutdown call
         reactor.addSystemEventTrigger('before', 'shutdown', self.onStop)
@@ -212,7 +227,9 @@ class NexusBase(object):
 
     def onStart(self):
         pdid = self.info.pdid if self.provisioned() else 'UNPROVISIONED'
-        output.out.usage('%s (%s) coming up' % (self.info.pdid, self.meta.type))
+        output.out.usage('%s (%s) coming up' % (pdid, self.meta.type))
+
+        # Start the base session
 
     def onStop(self):
         self.save()
